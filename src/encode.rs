@@ -6,7 +6,7 @@ where
 {
     type Error;
 
-    fn encode(&'a self, buf: &'b mut W) -> Result<(), Self::Error>;
+    fn encode(&'a self, writer: &'b mut W) -> Result<(), Self::Error>;
 }
 
 pub trait EncodeMutableWriteWithContext<'a, 'b, W, C>
@@ -15,7 +15,7 @@ where
 {
     type Error;
 
-    fn encode(&'a self, buf: &'b mut W, ctx: C) -> Result<(), Self::Error>;
+    fn encode(&'a self, writer: &'b mut W, ctx: C) -> Result<(), Self::Error>;
 }
 
 pub trait EncodeBytes<'a> {

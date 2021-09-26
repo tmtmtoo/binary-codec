@@ -14,7 +14,7 @@ struct Frame {
     payload: Payload,
 }
 
-impl DecodeFixedArray<4> for LengthHeader {
+impl DecodeFixedLengthBytes<4> for LengthHeader {
     type Error = std::convert::Infallible;
 
     fn decode(bytes: [u8; 4]) -> Result<Self, Self::Error> {
@@ -31,7 +31,7 @@ impl EncodeBytes<'_> for LengthHeader {
     }
 }
 
-impl DecodeVector for Payload {
+impl DecodeVariableLengthBytes for Payload {
     type Error = std::convert::Infallible;
 
     fn decode(bytes: Vec<u8>) -> Result<Self, Self::Error> {
@@ -55,9 +55,9 @@ where
     type Error = CodecError<std::convert::Infallible>;
 
     fn decode(reader: &mut R) -> Result<Self, Self::Error> {
-        let length_header: LengthHeader = reader.decode_fixed_array()?;
+        let length_header: LengthHeader = reader.decode_fixed_length_bytes()?;
 
-        let payload = reader.decode_vector(length_header.0 as usize)?;
+        let payload = reader.decode_variable_length_bytes_with_length(length_header.0 as usize)?;
 
         Ok(Self {
             length_header,

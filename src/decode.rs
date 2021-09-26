@@ -6,7 +6,7 @@ where
 {
     type Error;
 
-    fn decode(bytes: &'a mut R) -> Result<Self, Self::Error>;
+    fn decode(reader: &'a mut R) -> Result<Self, Self::Error>;
 }
 
 pub trait DecodeMutableReadWithContext<'a, R, C>: Sized
@@ -15,31 +15,35 @@ where
 {
     type Error;
 
-    fn decode(bytes: &'a mut R, ctx: C) -> Result<Self, Self::Error>;
+    fn decode(reader: &'a mut R, ctx: C) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeFixedArray<const N: usize>: Sized {
+pub trait DecodeFixedLengthBytes<const N: usize>: Sized {
     type Error;
 
     fn decode(bytes: [u8; N]) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeFixedArrayWithContext<C, const N: usize>: Sized {
+pub trait DecodeFixedLengthBytesWithContext<C, const N: usize>: Sized {
     type Error;
 
     fn decode(bytes: [u8; N], ctx: C) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeVector: Sized {
+pub trait DecodeVariableLengthBytes: Sized {
     type Error;
 
     fn decode(bytes: Vec<u8>) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeVectorWithContext<C>: Sized {
+pub trait DecodeVariableLengthBytesWithContext<C>: Sized {
     type Error;
 
     fn decode(bytes: Vec<u8>, ctx: C) -> Result<Self, Self::Error>;
+}
+
+pub trait DecodeByteLength<const N: usize> {
+    fn decode(bytes: [u8; N]) -> usize;
 }
 
 pub trait BinaryDecode<'a, R> {
@@ -53,28 +57,46 @@ pub trait BinaryDecode<'a, R> {
         D: DecodeMutableReadWithContext<'a, R, C>,
         R: std::io::Read;
 
-    fn decode_fixed_array<D, const N: usize>(&'a mut self) -> Result<D, CodecError<D::Error>>
+    fn decode_fixed_length_bytes<D, const N: usize>(
+        &'a mut self,
+    ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeFixedArray<N>;
+        D: DecodeFixedLengthBytes<N>;
 
-    fn decode_fixed_array_with<D, C, const N: usize>(
+    fn decode_fixed_length_bytes_with<D, C, const N: usize>(
         &'a mut self,
         ctx: C,
     ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeFixedArrayWithContext<C, N>;
+        D: DecodeFixedLengthBytesWithContext<C, N>;
 
-    fn decode_vector<D>(&'a mut self, length: usize) -> Result<D, CodecError<D::Error>>
+    fn decode_variable_length_bytes<D, const N: usize>(
+        &'a mut self,
+    ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeVector;
+        D: DecodeByteLength<N> + DecodeVariableLengthBytes;
 
-    fn decode_vector_with<D, C>(
+    fn decode_variable_length_bytes_with<D, C, const N: usize>(
+        &'a mut self,
+        ctx: C,
+    ) -> Result<D, CodecError<D::Error>>
+    where
+        D: DecodeByteLength<N> + DecodeVariableLengthBytesWithContext<C>;
+
+    fn decode_variable_length_bytes_with_length<D>(
+        &'a mut self,
+        length: usize,
+    ) -> Result<D, CodecError<D::Error>>
+    where
+        D: DecodeVariableLengthBytes;
+
+    fn decode_variable_length_bytes_with_length_and<D, C>(
         &'a mut self,
         length: usize,
         ctx: C,
     ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeVectorWithContext<C>;
+        D: DecodeVariableLengthBytesWithContext<C>;
 }
 
 impl<'a, R> BinaryDecode<'a, R> for R
@@ -96,43 +118,78 @@ where
         D::decode(self, ctx)
     }
 
-    fn decode_fixed_array<D, const N: usize>(&'a mut self) -> Result<D, CodecError<D::Error>>
+    fn decode_fixed_length_bytes<D, const N: usize>(&'a mut self) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeFixedArray<N>,
+        D: DecodeFixedLengthBytes<N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
         D::decode(buf).map_err(CodecError::UserDefined)
     }
 
-    fn decode_fixed_array_with<D, C, const N: usize>(
+    fn decode_fixed_length_bytes_with<D, C, const N: usize>(
         &'a mut self,
         ctx: C,
     ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeFixedArrayWithContext<C, N>,
+        D: DecodeFixedLengthBytesWithContext<C, N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
         D::decode(buf, ctx).map_err(CodecError::UserDefined)
     }
 
-    fn decode_vector<D>(&'a mut self, length: usize) -> Result<D, CodecError<D::Error>>
+    fn decode_variable_length_bytes<D, const N: usize>(
+        &'a mut self,
+    ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeVector,
+        D: DecodeByteLength<N> + DecodeVariableLengthBytes,
+    {
+        let mut buf = [0; N];
+        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        let length: usize = <D as DecodeByteLength<N>>::decode(buf);
+
+        let mut buf = vec![0; length];
+        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        <D as DecodeVariableLengthBytes>::decode(buf).map_err(CodecError::UserDefined)
+    }
+
+    fn decode_variable_length_bytes_with<D, C, const N: usize>(
+        &'a mut self,
+        ctx: C,
+    ) -> Result<D, CodecError<D::Error>>
+    where
+        D: DecodeByteLength<N> + DecodeVariableLengthBytesWithContext<C>,
+    {
+        let mut buf = [0; N];
+        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        let length: usize = <D as DecodeByteLength<N>>::decode(buf);
+
+        let mut buf = vec![0; length];
+        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        <D as DecodeVariableLengthBytesWithContext<C>>::decode(buf, ctx)
+            .map_err(CodecError::UserDefined)
+    }
+
+    fn decode_variable_length_bytes_with_length<D>(
+        &'a mut self,
+        length: usize,
+    ) -> Result<D, CodecError<D::Error>>
+    where
+        D: DecodeVariableLengthBytes,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
         D::decode(buf).map_err(CodecError::UserDefined)
     }
 
-    fn decode_vector_with<D, C>(
+    fn decode_variable_length_bytes_with_length_and<D, C>(
         &'a mut self,
         length: usize,
         ctx: C,
     ) -> Result<D, CodecError<D::Error>>
     where
-        D: DecodeVectorWithContext<C>,
+        D: DecodeVariableLengthBytesWithContext<C>,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
@@ -188,7 +245,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_decode_fixe_array(value: u16) {
-        impl DecodeFixedArray<2> for u16 {
+        impl DecodeFixedLengthBytes<2> for u16 {
             type Error = std::convert::Infallible;
 
             fn decode(bytes: [u8; 2]) -> Result<Self, Self::Error> {
@@ -197,13 +254,13 @@ mod tests {
         }
 
         let mut bytes = std::io::Cursor::new(value.to_be_bytes());
-        let actual: u16 = bytes.decode_fixed_array().unwrap();
+        let actual: u16 = bytes.decode_fixed_length_bytes().unwrap();
         assert_eq!(actual, value)
     }
 
     #[quickcheck]
     fn equivalent_when_decode_fixe_array_with_ctx(value: u16) {
-        impl DecodeFixedArrayWithContext<(), 2> for u16 {
+        impl DecodeFixedLengthBytesWithContext<(), 2> for u16 {
             type Error = std::convert::Infallible;
 
             fn decode(bytes: [u8; 2], _: ()) -> Result<Self, Self::Error> {
@@ -212,13 +269,13 @@ mod tests {
         }
 
         let mut bytes = std::io::Cursor::new(value.to_be_bytes());
-        let actual: u16 = bytes.decode_fixed_array_with(()).unwrap();
+        let actual: u16 = bytes.decode_fixed_length_bytes_with(()).unwrap();
         assert_eq!(actual, value)
     }
 
     #[quickcheck]
-    fn equivalent_when_decode_vector(value: u16) {
-        impl DecodeVector for u16 {
+    fn equivalent_when_decode_variable_length_bytes_with_ctx(value: u16) {
+        impl DecodeVariableLengthBytes for u16 {
             type Error = Vec<u8>;
 
             fn decode(bytes: Vec<u8>) -> Result<Self, Self::Error> {
@@ -228,13 +285,13 @@ mod tests {
         }
 
         let mut bytes = std::io::Cursor::new(value.to_be_bytes());
-        let actual: u16 = bytes.decode_vector(2).unwrap();
+        let actual: u16 = bytes.decode_variable_length_bytes_with_length(2).unwrap();
         assert_eq!(actual, value)
     }
 
     #[quickcheck]
-    fn equivalent_when_decode_vector_with_ctx(value: u16) {
-        impl DecodeVectorWithContext<()> for u16 {
+    fn equivalent_when_decode_variable_length_bytes_with_length_ctx(value: u16) {
+        impl DecodeVariableLengthBytesWithContext<()> for u16 {
             type Error = Vec<u8>;
 
             fn decode(bytes: Vec<u8>, _: ()) -> Result<Self, Self::Error> {
@@ -244,7 +301,9 @@ mod tests {
         }
 
         let mut bytes = std::io::Cursor::new(value.to_be_bytes());
-        let actual: u16 = bytes.decode_vector_with(2, ()).unwrap();
+        let actual: u16 = bytes
+            .decode_variable_length_bytes_with_length_and(2, ())
+            .unwrap();
         assert_eq!(actual, value)
     }
 }
