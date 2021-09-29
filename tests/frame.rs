@@ -14,36 +14,36 @@ struct Frame {
     payload: Payload,
 }
 
-impl DecodeFixedLengthBytes<4> for LengthHeader {
+impl DecodeFixedLengthField<4> for LengthHeader {
     type Error = std::convert::Infallible;
 
-    fn decode(bytes: [u8; 4]) -> Result<Self, Self::Error> {
+    fn handle(bytes: [u8; 4]) -> Result<Self, Self::Error> {
         Ok(LengthHeader(u32::from_be_bytes(bytes)))
     }
 }
 
-impl EncodeBytes<'_> for LengthHeader {
+impl EncodeField<'_> for LengthHeader {
     type Bytes = [u8; 4];
     type Error = std::convert::Infallible;
 
-    fn encode(&self) -> Result<[u8; 4], Self::Error> {
+    fn handle(&self) -> Result<[u8; 4], Self::Error> {
         Ok(self.0.to_be_bytes())
     }
 }
 
-impl DecodeVariableLengthBytes for Payload {
+impl DecodeVariableLengthField for Payload {
     type Error = std::convert::Infallible;
 
-    fn decode(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+    fn handle(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         Ok(Self(bytes))
     }
 }
 
-impl<'a> EncodeBytes<'a> for Payload {
+impl<'a> EncodeField<'a> for Payload {
     type Bytes = &'a [u8];
     type Error = std::convert::Infallible;
 
-    fn encode(&'a self) -> Result<&'a [u8], Self::Error> {
+    fn handle(&'a self) -> Result<&'a [u8], Self::Error> {
         Ok(&self.0)
     }
 }
@@ -54,10 +54,10 @@ where
 {
     type Error = CodecError<std::convert::Infallible>;
 
-    fn decode(reader: &mut R) -> Result<Self, Self::Error> {
-        let length_header: LengthHeader = reader.decode_fixed_length_bytes()?;
+    fn handle(reader: &mut R) -> Result<Self, Self::Error> {
+        let length_header: LengthHeader = reader.decode_fixed_length_field()?;
 
-        let payload = reader.decode_variable_length_bytes_with_length(length_header.0 as usize)?;
+        let payload = reader.decode_variable_length_field_with_length(length_header.0 as usize)?;
 
         Ok(Self {
             length_header,
@@ -72,9 +72,9 @@ where
 {
     type Error = CodecError<std::convert::Infallible>;
 
-    fn encode(&self, buf: &mut W) -> Result<(), Self::Error> {
-        buf.encode_bytes(&self.length_header)?;
-        buf.encode_bytes(&self.payload)
+    fn handle(&self, buf: &mut W) -> Result<(), Self::Error> {
+        buf.encode_field(&self.length_header)?;
+        buf.encode_field(&self.payload)
     }
 }
 
@@ -84,11 +84,11 @@ fn equivalent_when_decode_and_encode() {
 
     let mut read = std::io::Cursor::new(&bytes);
 
-    let frame: Frame = read.decode_mutable_read().unwrap();
+    let frame: Frame = read.decode().unwrap();
 
     let mut buf: Vec<u8> = Vec::new();
 
-    buf.encode_mutable_write(&frame).unwrap();
+    buf.encode(&frame).unwrap();
 
     assert_eq!(buf, bytes);
 }

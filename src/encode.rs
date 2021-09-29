@@ -1,102 +1,102 @@
 use super::CodecError;
 
-pub trait EncodeMutableWrite<'a, 'b, W>
+pub trait EncodeMutableWrite<'e, 'w, W>
 where
     W: std::io::Write,
 {
     type Error;
 
-    fn encode(&'a self, writer: &'b mut W) -> Result<(), Self::Error>;
+    fn handle(&'e self, writer: &'w mut W) -> Result<(), Self::Error>;
 }
 
-pub trait EncodeMutableWriteWithContext<'a, 'b, W, C>
+pub trait EncodeMutableWriteWithContext<'e, 'w, W, C>
 where
     W: std::io::Write,
 {
     type Error;
 
-    fn encode(&'a self, writer: &'b mut W, ctx: C) -> Result<(), Self::Error>;
+    fn handle(&'e self, writer: &'w mut W, ctx: C) -> Result<(), Self::Error>;
 }
 
-pub trait EncodeBytes<'a> {
+pub trait EncodeField<'e> {
     type Bytes: AsRef<[u8]>;
     type Error;
 
-    fn encode(&'a self) -> Result<Self::Bytes, Self::Error>;
+    fn handle(&'e self) -> Result<Self::Bytes, Self::Error>;
 }
 
-pub trait EncodeBytesWithContext<'a, C> {
+pub trait EncodeFieldWithContext<'e, C> {
     type Bytes: AsRef<[u8]>;
     type Error;
 
-    fn encode(&'a self, ctx: C) -> Result<Self::Bytes, Self::Error>;
+    fn handle(&'e self, ctx: C) -> Result<Self::Bytes, Self::Error>;
 }
 
-pub trait BinaryEncode<'a, 'b, W> {
-    fn encode_mutable_write<E>(&'a mut self, value: &'b E) -> Result<(), E::Error>
+pub trait BinaryEncode<'w, 'e, W> {
+    fn encode<E>(&'w mut self, value: &'e E) -> Result<(), E::Error>
     where
-        E: EncodeMutableWrite<'b, 'a, W>,
+        E: EncodeMutableWrite<'e, 'w, W>,
         W: std::io::Write;
 
-    fn encode_mutable_write_with<E, C>(&'a mut self, value: &'b E, ctx: C) -> Result<(), E::Error>
+    fn encode_with<E, C>(&'w mut self, value: &'e E, ctx: C) -> Result<(), E::Error>
     where
-        E: EncodeMutableWriteWithContext<'b, 'a, W, C>,
+        E: EncodeMutableWriteWithContext<'e, 'w, W, C>,
         W: std::io::Write;
 
-    fn encode_bytes<E, B>(&'a mut self, value: &'b E) -> Result<(), CodecError<E::Error>>
+    fn encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), CodecError<E::Error>>
     where
-        E: EncodeBytes<'b, Bytes = B>,
+        E: EncodeField<'e, Bytes = B>,
         B: AsRef<[u8]>;
 
-    fn encode_bytes_with<E, C, B>(
-        &'a mut self,
-        value: &'b E,
+    fn encode_field_with<E, C, B>(
+        &'w mut self,
+        value: &'e E,
         ctx: C,
     ) -> Result<(), CodecError<E::Error>>
     where
-        E: EncodeBytesWithContext<'b, C, Bytes = B>,
+        E: EncodeFieldWithContext<'e, C, Bytes = B>,
         B: AsRef<[u8]>;
 }
 
-impl<'a, 'b, W> BinaryEncode<'a, 'b, W> for W
+impl<'w, 'e, W> BinaryEncode<'w, 'e, W> for W
 where
     W: std::io::Write,
 {
-    fn encode_mutable_write<E>(&'a mut self, value: &'b E) -> Result<(), E::Error>
+    fn encode<E>(&'w mut self, value: &'e E) -> Result<(), E::Error>
     where
-        E: EncodeMutableWrite<'b, 'a, W>,
+        E: EncodeMutableWrite<'e, 'w, W>,
         W: std::io::Write,
     {
-        E::encode(value, self)
+        E::handle(value, self)
     }
 
-    fn encode_mutable_write_with<E, C>(&'a mut self, value: &'b E, ctx: C) -> Result<(), E::Error>
+    fn encode_with<E, C>(&'w mut self, value: &'e E, ctx: C) -> Result<(), E::Error>
     where
-        E: EncodeMutableWriteWithContext<'b, 'a, W, C>,
+        E: EncodeMutableWriteWithContext<'e, 'w, W, C>,
         W: std::io::Write,
     {
-        E::encode(value, self, ctx)
+        E::handle(value, self, ctx)
     }
 
-    fn encode_bytes<E, B>(&'a mut self, value: &'b E) -> Result<(), CodecError<E::Error>>
+    fn encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), CodecError<E::Error>>
     where
-        E: EncodeBytes<'b, Bytes = B>,
+        E: EncodeField<'e, Bytes = B>,
         B: AsRef<[u8]>,
     {
-        let bytes = value.encode().map_err(CodecError::UserDefined)?;
+        let bytes = value.handle().map_err(CodecError::UserDefined)?;
         self.write_all(bytes.as_ref()).map_err(CodecError::Io)
     }
 
-    fn encode_bytes_with<E, C, B>(
-        &'a mut self,
-        value: &'b E,
+    fn encode_field_with<E, C, B>(
+        &'w mut self,
+        value: &'e E,
         ctx: C,
     ) -> Result<(), CodecError<E::Error>>
     where
-        E: EncodeBytesWithContext<'b, C, Bytes = B>,
+        E: EncodeFieldWithContext<'e, C, Bytes = B>,
         B: AsRef<[u8]>,
     {
-        let bytes = value.encode(ctx).map_err(CodecError::UserDefined)?;
+        let bytes = value.handle(ctx).map_err(CodecError::UserDefined)?;
         self.write_all(bytes.as_ref()).map_err(CodecError::Io)
     }
 }
@@ -114,13 +114,13 @@ mod tests {
         {
             type Error = std::io::Error;
 
-            fn encode(&self, buf: &mut W) -> Result<(), Self::Error> {
+            fn handle(&self, buf: &mut W) -> Result<(), Self::Error> {
                 buf.write_all(&self.to_be_bytes())
             }
         }
 
         let mut buff = vec![];
-        buff.encode_mutable_write(&value).unwrap();
+        buff.encode(&value).unwrap();
         let expected = value.to_be_bytes();
         assert_eq!(buff, expected);
     }
@@ -133,47 +133,47 @@ mod tests {
         {
             type Error = std::io::Error;
 
-            fn encode(&self, buf: &mut W, _: ()) -> Result<(), Self::Error> {
+            fn handle(&self, buf: &mut W, _: ()) -> Result<(), Self::Error> {
                 buf.write_all(&self.to_be_bytes())
             }
         }
 
         let mut buff = vec![];
-        buff.encode_mutable_write(&value).unwrap();
+        buff.encode(&value).unwrap();
         let expected = value.to_be_bytes();
         assert_eq!(buff, expected);
     }
 
     #[quickcheck]
-    fn equivalent_when_encode(value: u16) {
-        impl EncodeBytes<'_> for u16 {
+    fn equivalent_when_encode_field(value: u16) {
+        impl EncodeField<'_> for u16 {
             type Bytes = [u8; 2];
             type Error = std::convert::Infallible;
 
-            fn encode(&self) -> Result<[u8; 2], Self::Error> {
+            fn handle(&self) -> Result<[u8; 2], Self::Error> {
                 Ok(self.to_be_bytes())
             }
         }
 
         let mut buff = vec![];
-        buff.encode_bytes(&value).unwrap();
+        buff.encode_field(&value).unwrap();
         let expected = value.to_be_bytes();
         assert_eq!(buff, expected);
     }
 
     #[quickcheck]
-    fn equivalent_when_encode_with_ctx(value: u16) {
-        impl EncodeBytesWithContext<'_, ()> for u16 {
+    fn equivalent_when_encode_field_with_ctx(value: u16) {
+        impl EncodeFieldWithContext<'_, ()> for u16 {
             type Bytes = [u8; 2];
             type Error = std::convert::Infallible;
 
-            fn encode(&self, _: ()) -> Result<[u8; 2], Self::Error> {
+            fn handle(&self, _: ()) -> Result<[u8; 2], Self::Error> {
                 Ok(self.to_be_bytes())
             }
         }
 
         let mut buff = vec![];
-        buff.encode_bytes_with(&value, ()).unwrap();
+        buff.encode_field_with(&value, ()).unwrap();
         let expected = value.to_be_bytes();
         assert_eq!(buff, expected);
     }
