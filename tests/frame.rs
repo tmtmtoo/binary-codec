@@ -15,44 +15,38 @@ struct Frame {
 }
 
 impl DecodeFixedLengthField<4> for LengthHeader {
-    type Error = std::convert::Infallible;
-
-    fn handle(bytes: [u8; 4]) -> Result<Self, Self::Error> {
-        Ok(LengthHeader(u32::from_be_bytes(bytes)))
+    fn handle(bytes: [u8; 4]) -> Self {
+        Self(u32::from_be_bytes(bytes))
     }
 }
 
 impl EncodeField<'_> for LengthHeader {
     type Bytes = [u8; 4];
-    type Error = std::convert::Infallible;
 
-    fn handle(&self) -> Result<[u8; 4], Self::Error> {
-        Ok(self.0.to_be_bytes())
+    fn handle(&self) -> [u8; 4] {
+        self.0.to_be_bytes()
     }
 }
 
 impl DecodeVariableLengthField for Payload {
-    type Error = std::convert::Infallible;
-
-    fn handle(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self(bytes))
+    fn handle(bytes: Vec<u8>) -> Self {
+        Self(bytes)
     }
 }
 
 impl<'a> EncodeField<'a> for Payload {
     type Bytes = &'a [u8];
-    type Error = std::convert::Infallible;
 
-    fn handle(&'a self) -> Result<&'a [u8], Self::Error> {
-        Ok(&self.0)
+    fn handle(&'a self) -> &'a [u8] {
+        &self.0
     }
 }
 
-impl<R> DecodeMutableRead<'_, R> for Frame
+impl<R> TryDecode<'_, R> for Frame
 where
     R: std::io::Read,
 {
-    type Error = CodecError<std::convert::Infallible>;
+    type Error = std::io::Error;
 
     fn handle(reader: &mut R) -> Result<Self, Self::Error> {
         let length_header: LengthHeader = reader.decode_fixed_length_field()?;
@@ -66,11 +60,11 @@ where
     }
 }
 
-impl<W> EncodeMutableWrite<'_, '_, W> for Frame
+impl<W> TryEncode<'_, '_, W> for Frame
 where
     W: std::io::Write,
 {
-    type Error = CodecError<std::convert::Infallible>;
+    type Error = std::io::Error;
 
     fn handle(&self, buf: &mut W) -> Result<(), Self::Error> {
         buf.encode_field(&self.length_header)?;
@@ -84,11 +78,11 @@ fn equivalent_when_decode_and_encode() {
 
     let mut read = std::io::Cursor::new(&bytes);
 
-    let frame: Frame = read.decode().unwrap();
+    let frame: Frame = read.try_decode().unwrap();
 
-    let mut buf: Vec<u8> = Vec::new();
+    let mut buf = Vec::new();
 
-    buf.encode(&frame).unwrap();
+    buf.try_encode(&frame).unwrap();
 
     assert_eq!(buf, bytes);
 }
