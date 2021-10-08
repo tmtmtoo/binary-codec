@@ -1,21 +1,15 @@
 use super::CodecError;
 
-pub trait TryEncode<'e, 'w, W>
-where
-    W: std::io::Write,
-{
+pub trait TryEncode<'e, 'w, Writer> {
     type Error;
 
-    fn handle(&'e self, writer: &'w mut W) -> Result<(), Self::Error>;
+    fn handle(&'e self, writer: &'w mut Writer) -> Result<(), Self::Error>;
 }
 
-pub trait TryEncodeWithContext<'e, 'w, W, C>
-where
-    W: std::io::Write,
-{
+pub trait TryEncodeWith<'e, 'w, Writer, Context> {
     type Error;
 
-    fn handle(&'e self, writer: &'w mut W, ctx: C) -> Result<(), Self::Error>;
+    fn handle(&'e self, writer: &'w mut Writer, ctx: Context) -> Result<(), Self::Error>;
 }
 
 pub trait EncodeField<'e> {
@@ -31,110 +25,128 @@ pub trait TryEncodeField<'e> {
     fn handle(&'e self) -> Result<Self::Bytes, Self::Error>;
 }
 
-pub trait EncodeFieldWithContext<'e, C> {
+pub trait EncodeFieldWith<'e, Context> {
     type Bytes: AsRef<[u8]>;
 
-    fn handle(&'e self, ctx: C) -> Self::Bytes;
+    fn handle(&'e self, ctx: Context) -> Self::Bytes;
 }
 
-pub trait TryEncodeFieldWithContext<'e, C> {
+pub trait TryEncodeFieldWith<'e, Context> {
     type Bytes: AsRef<[u8]>;
     type Error;
 
-    fn handle(&'e self, ctx: C) -> Result<Self::Bytes, Self::Error>;
+    fn handle(&'e self, ctx: Context) -> Result<Self::Bytes, Self::Error>;
 }
 
-pub trait BinaryEncode<'w, 'e, W> {
-    fn try_encode<E>(&'w mut self, value: &'e E) -> Result<(), E::Error>
+pub trait BinaryEncode<'w, 'e, Writer> {
+    fn try_encode<Encode>(&'w mut self, value: &'e Encode) -> Result<(), Encode::Error>
     where
-        E: TryEncode<'e, 'w, W>,
-        W: std::io::Write;
+        Encode: TryEncode<'e, 'w, Writer>;
 
-    fn try_encode_with<E, C>(&'w mut self, value: &'e E, ctx: C) -> Result<(), E::Error>
-    where
-        E: TryEncodeWithContext<'e, 'w, W, C>,
-        W: std::io::Write;
-
-    fn encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), std::io::Error>
-    where
-        E: EncodeField<'e, Bytes = B>,
-        B: AsRef<[u8]>;
-
-    fn try_encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), CodecError<E::Error>>
-    where
-        E: TryEncodeField<'e, Bytes = B>,
-        B: AsRef<[u8]>;
-
-    fn encode_field_with<E, C, B>(&'w mut self, value: &'e E, ctx: C) -> Result<(), std::io::Error>
-    where
-        E: EncodeFieldWithContext<'e, C, Bytes = B>,
-        B: AsRef<[u8]>;
-
-    fn try_encode_field_with<E, C, B>(
+    fn try_encode_with<Encode, Context>(
         &'w mut self,
-        value: &'e E,
-        ctx: C,
-    ) -> Result<(), CodecError<E::Error>>
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), Encode::Error>
     where
-        E: TryEncodeFieldWithContext<'e, C, Bytes = B>,
-        B: AsRef<[u8]>;
+        Encode: TryEncodeWith<'e, 'w, Writer, Context>;
+
+    fn encode_field<Encode, Bytes>(&'w mut self, value: &'e Encode) -> Result<(), std::io::Error>
+    where
+        Encode: EncodeField<'e, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>;
+
+    fn try_encode_field<Encode, Bytes>(
+        &'w mut self,
+        value: &'e Encode,
+    ) -> Result<(), CodecError<Encode::Error>>
+    where
+        Encode: TryEncodeField<'e, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>;
+
+    fn encode_field_with<Encode, Context, Bytes>(
+        &'w mut self,
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), std::io::Error>
+    where
+        Encode: EncodeFieldWith<'e, Context, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>;
+
+    fn try_encode_field_with<Encode, Context, Bytes>(
+        &'w mut self,
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), CodecError<Encode::Error>>
+    where
+        Encode: TryEncodeFieldWith<'e, Context, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>;
 }
 
-impl<'w, 'e, W> BinaryEncode<'w, 'e, W> for W
+impl<'w, 'e, Writer> BinaryEncode<'w, 'e, Writer> for Writer
 where
-    W: std::io::Write,
+    Writer: std::io::Write,
 {
-    fn try_encode<E>(&'w mut self, value: &'e E) -> Result<(), E::Error>
+    fn try_encode<Encode>(&'w mut self, value: &'e Encode) -> Result<(), Encode::Error>
     where
-        E: TryEncode<'e, 'w, W>,
-        W: std::io::Write,
+        Encode: TryEncode<'e, 'w, Writer>,
     {
-        E::handle(value, self)
+        Encode::handle(value, self)
     }
 
-    fn try_encode_with<E, C>(&'w mut self, value: &'e E, ctx: C) -> Result<(), E::Error>
+    fn try_encode_with<Encode, Context>(
+        &'w mut self,
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), Encode::Error>
     where
-        E: TryEncodeWithContext<'e, 'w, W, C>,
-        W: std::io::Write,
+        Encode: TryEncodeWith<'e, 'w, Writer, Context>,
     {
-        E::handle(value, self, ctx)
+        Encode::handle(value, self, ctx)
     }
 
-    fn encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), std::io::Error>
+    fn encode_field<Encode, Bytes>(&'w mut self, value: &'e Encode) -> Result<(), std::io::Error>
     where
-        E: EncodeField<'e, Bytes = B>,
-        B: AsRef<[u8]>,
+        Encode: EncodeField<'e, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>,
     {
         let bytes = value.handle();
         self.write_all(bytes.as_ref())
     }
 
-    fn try_encode_field<E, B>(&'w mut self, value: &'e E) -> Result<(), CodecError<E::Error>>
+    fn try_encode_field<Encode, Bytes>(
+        &'w mut self,
+        value: &'e Encode,
+    ) -> Result<(), CodecError<Encode::Error>>
     where
-        E: TryEncodeField<'e, Bytes = B>,
-        B: AsRef<[u8]>,
+        Encode: TryEncodeField<'e, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>,
     {
         let bytes = value.handle().map_err(CodecError::UserDefined)?;
         self.write_all(bytes.as_ref()).map_err(CodecError::Io)
     }
 
-    fn encode_field_with<E, C, B>(&'w mut self, value: &'e E, ctx: C) -> Result<(), std::io::Error>
+    fn encode_field_with<Encode, Context, Bytes>(
+        &'w mut self,
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), std::io::Error>
     where
-        E: EncodeFieldWithContext<'e, C, Bytes = B>,
-        B: AsRef<[u8]>,
+        Encode: EncodeFieldWith<'e, Context, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>,
     {
         let bytes = value.handle(ctx);
         self.write_all(bytes.as_ref())
     }
 
-    fn try_encode_field_with<E, C, B>(
+    fn try_encode_field_with<Encode, Context, Bytes>(
         &'w mut self,
-        value: &'e E,
-        ctx: C,
-    ) -> Result<(), CodecError<E::Error>>
+        value: &'e Encode,
+        ctx: Context,
+    ) -> Result<(), CodecError<Encode::Error>>
     where
-        E: TryEncodeFieldWithContext<'e, C, Bytes = B>,
-        B: AsRef<[u8]>,
+        Encode: TryEncodeFieldWith<'e, Context, Bytes = Bytes>,
+        Bytes: AsRef<[u8]>,
     {
         let bytes = value.handle(ctx).map_err(CodecError::UserDefined)?;
         self.write_all(bytes.as_ref()).map_err(CodecError::Io)
@@ -167,7 +179,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_try_encode_with_ctx(value: u16) {
-        impl<W> TryEncodeWithContext<'_, '_, W, ()> for u16
+        impl<W> TryEncodeWith<'_, '_, W, ()> for u16
         where
             W: std::io::Write,
         {
@@ -219,7 +231,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_encode_field_with_ctx(value: u16) {
-        impl EncodeFieldWithContext<'_, ()> for u16 {
+        impl EncodeFieldWith<'_, ()> for u16 {
             type Bytes = [u8; 2];
 
             fn handle(&self, _: ()) -> Self::Bytes {
@@ -235,7 +247,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_try_encode_field_with_ctx(value: u16) {
-        impl TryEncodeFieldWithContext<'_, ()> for u16 {
+        impl TryEncodeFieldWith<'_, ()> for u16 {
             type Bytes = [u8; 2];
             type Error = std::convert::Infallible;
 

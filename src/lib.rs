@@ -4,14 +4,14 @@ mod encode;
 pub use decode::*;
 pub use encode::*;
 
-pub enum CodecError<E> {
+pub enum CodecError<UserDefined> {
     Io(std::io::Error),
-    UserDefined(E),
+    UserDefined(UserDefined),
 }
 
-impl<E> std::fmt::Debug for CodecError<E>
+impl<UserDefined> std::fmt::Debug for CodecError<UserDefined>
 where
-    E: std::fmt::Debug,
+    UserDefined: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let debug = match self {
@@ -22,9 +22,9 @@ where
     }
 }
 
-impl<E> std::fmt::Display for CodecError<E>
+impl<UserDefined> std::fmt::Display for CodecError<UserDefined>
 where
-    E: std::fmt::Display,
+    UserDefined: std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display = match self {
@@ -35,9 +35,9 @@ where
     }
 }
 
-impl<E> std::error::Error for CodecError<E>
+impl<UserDefined> std::error::Error for CodecError<UserDefined>
 where
-    E: std::error::Error,
+    UserDefined: std::error::Error,
 {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         let error = match self {

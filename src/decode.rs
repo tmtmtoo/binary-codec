@@ -1,21 +1,15 @@
 use super::CodecError;
 
-pub trait TryDecode<'r, R>: Sized
-where
-    R: std::io::Read,
-{
+pub trait TryDecode<'r, Reader>: Sized {
     type Error;
 
-    fn handle(reader: &'r mut R) -> Result<Self, Self::Error>;
+    fn handle(reader: &'r mut Reader) -> Result<Self, Self::Error>;
 }
 
-pub trait TryDecodeWithContext<'r, R, C>: Sized
-where
-    R: std::io::Read,
-{
+pub trait TryDecodeWith<'r, Reader, Context>: Sized {
     type Error;
 
-    fn handle(reader: &'r mut R, ctx: C) -> Result<Self, Self::Error>;
+    fn handle(reader: &'r mut Reader, ctx: Context) -> Result<Self, Self::Error>;
 }
 
 pub trait DecodeFixedLengthField<const N: usize>: Sized {
@@ -28,14 +22,14 @@ pub trait TryDecodeFixedLengthField<const N: usize>: Sized {
     fn handle(bytes: [u8; N]) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeFixedLengthFieldWithContext<C, const N: usize>: Sized {
-    fn handle(bytes: [u8; N], ctx: C) -> Self;
+pub trait DecodeFixedLengthFieldWith<Context, const N: usize>: Sized {
+    fn handle(bytes: [u8; N], ctx: Context) -> Self;
 }
 
-pub trait TryDecodeFixedLengthFieldWithContext<C, const N: usize>: Sized {
+pub trait TryDecodeFixedLengthFieldWith<Context, const N: usize>: Sized {
     type Error;
 
-    fn handle(bytes: [u8; N], ctx: C) -> Result<Self, Self::Error>;
+    fn handle(bytes: [u8; N], ctx: Context) -> Result<Self, Self::Error>;
 }
 
 pub trait DecodeVariableLengthField: Sized {
@@ -48,58 +42,63 @@ pub trait TryDecodeVariableLengthField: Sized {
     fn handle(bytes: Vec<u8>) -> Result<Self, Self::Error>;
 }
 
-pub trait DecodeVariableLengthFieldWithContext<C>: Sized {
-    fn handle(bytes: Vec<u8>, ctx: C) -> Self;
+pub trait DecodeVariableLengthFieldWith<Context>: Sized {
+    fn handle(bytes: Vec<u8>, ctx: Context) -> Self;
 }
 
-pub trait TryDecodeVariableLengthFieldWithContext<C>: Sized {
+pub trait TryDecodeVariableLengthFieldWith<Context>: Sized {
     type Error;
 
-    fn handle(bytes: Vec<u8>, ctx: C) -> Result<Self, Self::Error>;
+    fn handle(bytes: Vec<u8>, ctx: Context) -> Result<Self, Self::Error>;
 }
 
 pub trait DecodeByteLength<const N: usize> {
     fn handle(bytes: [u8; N]) -> usize;
 }
 
-pub trait BinaryDecode<'r, R> {
-    fn try_decode<D>(&'r mut self) -> Result<D, D::Error>
+pub trait BinaryDecode<'r, Reader> {
+    fn try_decode<Decode>(&'r mut self) -> Result<Decode, Decode::Error>
     where
-        D: TryDecode<'r, R>,
-        R: std::io::Read;
+        Decode: TryDecode<'r, Reader>;
 
-    fn try_decode_with<D, C>(&'r mut self, ctx: C) -> Result<D, D::Error>
-    where
-        D: TryDecodeWithContext<'r, R, C>,
-        R: std::io::Read;
-
-    fn decode_fixed_length_field<D, const N: usize>(&'r mut self) -> Result<D, std::io::Error>
-    where
-        D: DecodeFixedLengthField<N>;
-
-    fn try_decode_fixed_length_field<D, const N: usize>(
+    fn try_decode_with<Decode, Context>(
         &'r mut self,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, Decode::Error>
     where
-        D: TryDecodeFixedLengthField<N>;
+        Decode: TryDecodeWith<'r, Reader, Context>;
 
-    fn decode_fixed_length_field_with<D, C, const N: usize>(
+    fn decode_fixed_length_field<Decode, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeFixedLengthFieldWithContext<C, N>;
+        Decode: DecodeFixedLengthField<N>;
 
-    fn try_decode_fixed_length_field_with<D, C, const N: usize>(
+    fn try_decode_fixed_length_field<Decode, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeFixedLengthFieldWithContext<C, N>;
+        Decode: TryDecodeFixedLengthField<N>;
 
-    fn decode_variable_length_field<D, const N: usize>(&'r mut self) -> Result<D, std::io::Error>
+    fn decode_fixed_length_field_with<Decode, Context, const N: usize>(
+        &'r mut self,
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeByteLength<N> + DecodeVariableLengthField;
+        Decode: DecodeFixedLengthFieldWith<Context, N>;
+
+    fn try_decode_fixed_length_field_with<Decode, Context, const N: usize>(
+        &'r mut self,
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
+    where
+        Decode: TryDecodeFixedLengthFieldWith<Context, N>;
+
+    fn decode_variable_length_field<Decode, const N: usize>(
+        &'r mut self,
+    ) -> Result<Decode, std::io::Error>
+    where
+        Decode: DecodeByteLength<N> + DecodeVariableLengthField;
 
     fn try_decode_variable_length_field<D, const N: usize>(
         &'r mut self,
@@ -107,118 +106,119 @@ pub trait BinaryDecode<'r, R> {
     where
         D: DecodeByteLength<N> + TryDecodeVariableLengthField;
 
-    fn decode_variable_length_field_with<D, C, const N: usize>(
+    fn decode_variable_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeByteLength<N> + DecodeVariableLengthFieldWithContext<C>;
+        Decode: DecodeByteLength<N> + DecodeVariableLengthFieldWith<Context>;
 
-    fn try_decode_variable_length_field_with<D, C, const N: usize>(
+    fn try_decode_variable_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: DecodeByteLength<N> + TryDecodeVariableLengthFieldWithContext<C>;
+        Decode: DecodeByteLength<N> + TryDecodeVariableLengthFieldWith<Context>;
 
-    fn decode_variable_length_field_with_length<D>(
+    fn decode_variable_length_field_with_length<Decode>(
         &'r mut self,
         length: usize,
-    ) -> Result<D, std::io::Error>
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeVariableLengthField;
+        Decode: DecodeVariableLengthField;
 
-    fn try_decode_variable_length_field_with_length<D>(
+    fn try_decode_variable_length_field_with_length<Decode>(
         &'r mut self,
         length: usize,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeVariableLengthField;
+        Decode: TryDecodeVariableLengthField;
 
-    fn decode_variable_length_field_with_length_and<D, C>(
+    fn decode_variable_length_field_with_length_and<Decode, Context>(
         &'r mut self,
         length: usize,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeVariableLengthFieldWithContext<C>;
+        Decode: DecodeVariableLengthFieldWith<Context>;
 
-    fn try_decode_variable_length_field_with_length_and<D, C>(
+    fn try_decode_variable_length_field_with_length_and<Decode, Context>(
         &'r mut self,
         length: usize,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeVariableLengthFieldWithContext<C>;
+        Decode: TryDecodeVariableLengthFieldWith<Context>;
 }
 
-impl<'r, R> BinaryDecode<'r, R> for R
+impl<'r, Reader> BinaryDecode<'r, Reader> for Reader
 where
-    R: std::io::Read,
+    Reader: std::io::Read,
 {
-    fn try_decode<D>(&'r mut self) -> Result<D, D::Error>
+    fn try_decode<Decode>(&'r mut self) -> Result<Decode, Decode::Error>
     where
-        D: TryDecode<'r, R>,
+        Decode: TryDecode<'r, Reader>,
     {
-        D::handle(self)
+        Decode::handle(self)
     }
 
-    fn try_decode_with<D, C>(&'r mut self, ctx: C) -> Result<D, D::Error>
+    fn try_decode_with<Decode, Context>(&'r mut self, ctx: Context) -> Result<Decode, Decode::Error>
     where
-        D: TryDecodeWithContext<'r, R, C>,
-        R: std::io::Read,
+        Decode: TryDecodeWith<'r, Reader, Context>,
     {
-        D::handle(self, ctx)
+        Decode::handle(self, ctx)
     }
 
-    fn decode_fixed_length_field<D, const N: usize>(&'r mut self) -> Result<D, std::io::Error>
+    fn decode_fixed_length_field<Decode, const N: usize>(
+        &'r mut self,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeFixedLengthField<N>,
+        Decode: DecodeFixedLengthField<N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf)?;
 
-        let field = D::handle(buf);
+        let field = Decode::handle(buf);
         Ok(field)
     }
 
-    fn try_decode_fixed_length_field<D, const N: usize>(
+    fn try_decode_fixed_length_field<Decode, const N: usize>(
         &'r mut self,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeFixedLengthField<N>,
+        Decode: TryDecodeFixedLengthField<N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        D::handle(buf).map_err(CodecError::UserDefined)
+        Decode::handle(buf).map_err(CodecError::UserDefined)
     }
 
-    fn decode_fixed_length_field_with<D, C, const N: usize>(
+    fn decode_fixed_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeFixedLengthFieldWithContext<C, N>,
+        Decode: DecodeFixedLengthFieldWith<Context, N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf)?;
 
-        let field = D::handle(buf, ctx);
+        let field = Decode::handle(buf, ctx);
         Ok(field)
     }
 
-    fn try_decode_fixed_length_field_with<D, C, const N: usize>(
+    fn try_decode_fixed_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeFixedLengthFieldWithContext<C, N>,
+        Decode: TryDecodeFixedLengthFieldWith<Context, N>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        D::handle(buf, ctx).map_err(CodecError::UserDefined)
+        Decode::handle(buf, ctx).map_err(CodecError::UserDefined)
     }
 
     fn decode_variable_length_field<D, const N: usize>(&'r mut self) -> Result<D, std::io::Error>
@@ -252,96 +252,96 @@ where
         <D as TryDecodeVariableLengthField>::handle(buf).map_err(CodecError::UserDefined)
     }
 
-    fn decode_variable_length_field_with<D, C, const N: usize>(
+    fn decode_variable_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeByteLength<N> + DecodeVariableLengthFieldWithContext<C>,
+        Decode: DecodeByteLength<N> + DecodeVariableLengthFieldWith<Context>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf)?;
-        let length: usize = <D as DecodeByteLength<N>>::handle(buf);
+        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
 
         let mut buf = vec![0; length];
         self.read_exact(&mut buf)?;
 
-        let field = <D as DecodeVariableLengthFieldWithContext<C>>::handle(buf, ctx);
+        let field = <Decode as DecodeVariableLengthFieldWith<Context>>::handle(buf, ctx);
         Ok(field)
     }
 
-    fn try_decode_variable_length_field_with<D, C, const N: usize>(
+    fn try_decode_variable_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: DecodeByteLength<N> + TryDecodeVariableLengthFieldWithContext<C>,
+        Decode: DecodeByteLength<N> + TryDecodeVariableLengthFieldWith<Context>,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
-        let length: usize = <D as DecodeByteLength<N>>::handle(buf);
+        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
 
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        <D as TryDecodeVariableLengthFieldWithContext<C>>::handle(buf, ctx)
+        <Decode as TryDecodeVariableLengthFieldWith<Context>>::handle(buf, ctx)
             .map_err(CodecError::UserDefined)
     }
 
-    fn decode_variable_length_field_with_length<D>(
+    fn decode_variable_length_field_with_length<Decode>(
         &'r mut self,
         length: usize,
-    ) -> Result<D, std::io::Error>
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeVariableLengthField,
+        Decode: DecodeVariableLengthField,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf)?;
 
-        let field = D::handle(buf);
+        let field = Decode::handle(buf);
         Ok(field)
     }
 
-    fn try_decode_variable_length_field_with_length<D>(
+    fn try_decode_variable_length_field_with_length<Decode>(
         &'r mut self,
         length: usize,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeVariableLengthField,
+        Decode: TryDecodeVariableLengthField,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        D::handle(buf).map_err(CodecError::UserDefined)
+        Decode::handle(buf).map_err(CodecError::UserDefined)
     }
 
-    fn decode_variable_length_field_with_length_and<D, C>(
+    fn decode_variable_length_field_with_length_and<Decode, Context>(
         &'r mut self,
         length: usize,
-        ctx: C,
-    ) -> Result<D, std::io::Error>
+        ctx: Context,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeVariableLengthFieldWithContext<C>,
+        Decode: DecodeVariableLengthFieldWith<Context>,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf)?;
 
-        let field = D::handle(buf, ctx);
+        let field = Decode::handle(buf, ctx);
         Ok(field)
     }
 
-    fn try_decode_variable_length_field_with_length_and<D, C>(
+    fn try_decode_variable_length_field_with_length_and<Decode, Context>(
         &'r mut self,
         length: usize,
-        ctx: C,
-    ) -> Result<D, CodecError<D::Error>>
+        ctx: Context,
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: TryDecodeVariableLengthFieldWithContext<C>,
+        Decode: TryDecodeVariableLengthFieldWith<Context>,
     {
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        D::handle(buf, ctx).map_err(CodecError::UserDefined)
+        Decode::handle(buf, ctx).map_err(CodecError::UserDefined)
     }
 }
 
@@ -373,7 +373,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_try_decode_with_ctx(value: u16) {
-        impl<'r, R> TryDecodeWithContext<'r, R, ()> for u16
+        impl<'r, R> TryDecodeWith<'r, R, ()> for u16
         where
             R: std::io::Read,
         {
@@ -421,7 +421,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_decode_fixed_length_field_with_ctx(value: u16) {
-        impl DecodeFixedLengthFieldWithContext<(), 2> for u16 {
+        impl DecodeFixedLengthFieldWith<(), 2> for u16 {
             fn handle(bytes: [u8; 2], _: ()) -> Self {
                 u16::from_be_bytes(bytes)
             }
@@ -434,7 +434,7 @@ mod tests {
 
     #[quickcheck]
     fn equivalent_when_try_decode_fixed_length_field_with_ctx(value: u16) {
-        impl TryDecodeFixedLengthFieldWithContext<(), 2> for u16 {
+        impl TryDecodeFixedLengthFieldWith<(), 2> for u16 {
             type Error = std::convert::Infallible;
 
             fn handle(bytes: [u8; 2], _: ()) -> Result<Self, Self::Error> {
@@ -479,8 +479,8 @@ mod tests {
     }
 
     #[quickcheck]
-    fn equivalent_when_decode_variable_length_field_with_length_ctx(value: u16) {
-        impl DecodeVariableLengthFieldWithContext<()> for u16 {
+    fn equivalent_when_decode_variable_length_field_with_ctx(value: u16) {
+        impl DecodeVariableLengthFieldWith<()> for u16 {
             fn handle(bytes: Vec<u8>, _: ()) -> Self {
                 u16::from_be_bytes([bytes[0], bytes[1]])
             }
@@ -494,8 +494,8 @@ mod tests {
     }
 
     #[quickcheck]
-    fn equivalent_when_try_decode_variable_length_field_with_length_ctx(value: u16) {
-        impl TryDecodeVariableLengthFieldWithContext<()> for u16 {
+    fn equivalent_when_try_decode_variable_length_field_with_ctx(value: u16) {
+        impl TryDecodeVariableLengthFieldWith<()> for u16 {
             type Error = Vec<u8>;
 
             fn handle(bytes: Vec<u8>, _: ()) -> Result<Self, Self::Error> {
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn equivalent_when_decode_variable_length_field_with_ctx(bytes: Vec<u8>) {
+    fn equivalent_when_decode_variable_length_field_with_ctx2(bytes: Vec<u8>) {
         #[derive(Debug, PartialEq)]
         struct Payload(Vec<u8>);
 
@@ -574,7 +574,7 @@ mod tests {
             }
         }
 
-        impl DecodeVariableLengthFieldWithContext<()> for Payload {
+        impl DecodeVariableLengthFieldWith<()> for Payload {
             fn handle(bytes: Vec<u8>, _: ()) -> Self {
                 Self(bytes)
             }
@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn equivalent_when_try_decode_variable_length_field_with_ctx(bytes: Vec<u8>) {
+    fn equivalent_when_try_decode_variable_length_field_with_ctx2(bytes: Vec<u8>) {
         #[derive(Debug, PartialEq)]
         struct Payload(Vec<u8>);
 
@@ -599,7 +599,7 @@ mod tests {
             }
         }
 
-        impl TryDecodeVariableLengthFieldWithContext<()> for Payload {
+        impl TryDecodeVariableLengthFieldWith<()> for Payload {
             type Error = std::convert::Infallible;
 
             fn handle(bytes: Vec<u8>, _: ()) -> Result<Self, Self::Error> {
