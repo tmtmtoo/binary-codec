@@ -100,11 +100,11 @@ pub trait BinaryDecode<'r, Reader> {
     where
         Decode: DecodeByteLength<N> + DecodeVariableLengthField;
 
-    fn try_decode_variable_length_field<D, const N: usize>(
+    fn try_decode_variable_length_field<Decode, const N: usize>(
         &'r mut self,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: DecodeByteLength<N> + TryDecodeVariableLengthField;
+        Decode: DecodeByteLength<N> + TryDecodeVariableLengthField;
 
     fn decode_variable_length_field_with<Decode, Context, const N: usize>(
         &'r mut self,
@@ -221,35 +221,37 @@ where
         Decode::handle(buf, ctx).map_err(CodecError::UserDefined)
     }
 
-    fn decode_variable_length_field<D, const N: usize>(&'r mut self) -> Result<D, std::io::Error>
+    fn decode_variable_length_field<Decode, const N: usize>(
+        &'r mut self,
+    ) -> Result<Decode, std::io::Error>
     where
-        D: DecodeByteLength<N> + DecodeVariableLengthField,
+        Decode: DecodeByteLength<N> + DecodeVariableLengthField,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf)?;
-        let length: usize = <D as DecodeByteLength<N>>::handle(buf);
+        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
 
         let mut buf = vec![0; length];
         self.read_exact(&mut buf)?;
 
-        let field = <D as DecodeVariableLengthField>::handle(buf);
+        let field = <Decode as DecodeVariableLengthField>::handle(buf);
         Ok(field)
     }
 
-    fn try_decode_variable_length_field<D, const N: usize>(
+    fn try_decode_variable_length_field<Decode, const N: usize>(
         &'r mut self,
-    ) -> Result<D, CodecError<D::Error>>
+    ) -> Result<Decode, CodecError<Decode::Error>>
     where
-        D: DecodeByteLength<N> + TryDecodeVariableLengthField,
+        Decode: DecodeByteLength<N> + TryDecodeVariableLengthField,
     {
         let mut buf = [0; N];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
-        let length: usize = <D as DecodeByteLength<N>>::handle(buf);
+        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
 
         let mut buf = vec![0; length];
         self.read_exact(&mut buf).map_err(CodecError::Io)?;
 
-        <D as TryDecodeVariableLengthField>::handle(buf).map_err(CodecError::UserDefined)
+        <Decode as TryDecodeVariableLengthField>::handle(buf).map_err(CodecError::UserDefined)
     }
 
     fn decode_variable_length_field_with<Decode, Context, const N: usize>(
