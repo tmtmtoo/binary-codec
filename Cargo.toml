@@ -2,6 +2,12 @@
 name = "binary-codec"
 version = "0.1.0"
 edition = "2018"
+license = "MIT"
+description = "A type-safe and efficient binary encoding and decoding framework"
+repository = "https://github.com/tmtmtoo/binary-codec"
+homepage = "https://github.com/tmtmtoo/binary-codec"
+readme = "README.md"
+keywords = ["codec", "encode", "decode", "binary"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
