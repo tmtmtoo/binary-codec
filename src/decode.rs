@@ -149,6 +149,10 @@ pub trait BinaryDecode<'r, Reader> {
     ) -> Result<Decode, CodecError<Decode::Error>>
     where
         Decode: TryDecodeVariableLengthFieldWith<Context>;
+
+    fn read_fixed_length<const N: usize>(&'r mut self) -> Result<[u8; N], std::io::Error>;
+
+    fn read_variable_length(&'r mut self, length: usize) -> Result<Vec<u8>, std::io::Error>;
 }
 
 impl<'r, Reader> BinaryDecode<'r, Reader> for Reader
@@ -175,11 +179,7 @@ where
     where
         Decode: DecodeFixedLengthField<N>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf)?;
-
-        let field = Decode::handle(buf);
-        Ok(field)
+        self.read_fixed_length().map(Decode::handle)
     }
 
     fn try_decode_fixed_length_field<Decode, const N: usize>(
@@ -188,10 +188,8 @@ where
     where
         Decode: TryDecodeFixedLengthField<N>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
-
-        Decode::handle(buf).map_err(CodecError::UserDefined)
+        let bytes = self.read_fixed_length().map_err(CodecError::Io)?;
+        Decode::handle(bytes).map_err(CodecError::UserDefined)
     }
 
     fn decode_fixed_length_field_with<Decode, Context, const N: usize>(
@@ -201,10 +199,8 @@ where
     where
         Decode: DecodeFixedLengthFieldWith<Context, N>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf)?;
-
-        let field = Decode::handle(buf, ctx);
+        let bytes = self.read_fixed_length()?;
+        let field = Decode::handle(bytes, ctx);
         Ok(field)
     }
 
@@ -215,10 +211,8 @@ where
     where
         Decode: TryDecodeFixedLengthFieldWith<Context, N>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
-
-        Decode::handle(buf, ctx).map_err(CodecError::UserDefined)
+        let bytes = self.read_fixed_length().map_err(CodecError::Io)?;
+        Decode::handle(bytes, ctx).map_err(CodecError::UserDefined)
     }
 
     fn decode_variable_length_field<Decode, const N: usize>(
@@ -227,15 +221,12 @@ where
     where
         Decode: DecodeByteLength<N> + DecodeVariableLengthField,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf)?;
-        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
+        let length = self
+            .read_fixed_length()
+            .map(<Decode as DecodeByteLength<N>>::handle)?;
 
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf)?;
-
-        let field = <Decode as DecodeVariableLengthField>::handle(buf);
-        Ok(field)
+        self.read_variable_length(length)
+            .map(<Decode as DecodeVariableLengthField>::handle)
     }
 
     fn try_decode_variable_length_field<Decode, const N: usize>(
@@ -244,14 +235,14 @@ where
     where
         Decode: DecodeByteLength<N> + TryDecodeVariableLengthField,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
-        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
+        let length = self
+            .read_fixed_length()
+            .map_err(CodecError::Io)
+            .map(<Decode as DecodeByteLength<N>>::handle)?;
 
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        let bytes = self.read_variable_length(length).map_err(CodecError::Io)?;
 
-        <Decode as TryDecodeVariableLengthField>::handle(buf).map_err(CodecError::UserDefined)
+        <Decode as TryDecodeVariableLengthField>::handle(bytes).map_err(CodecError::UserDefined)
     }
 
     fn decode_variable_length_field_with<Decode, Context, const N: usize>(
@@ -261,14 +252,13 @@ where
     where
         Decode: DecodeByteLength<N> + DecodeVariableLengthFieldWith<Context>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf)?;
-        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
+        let length = self
+            .read_fixed_length()
+            .map(<Decode as DecodeByteLength<N>>::handle)?;
 
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf)?;
+        let bytes = self.read_variable_length(length)?;
 
-        let field = <Decode as DecodeVariableLengthFieldWith<Context>>::handle(buf, ctx);
+        let field = <Decode as DecodeVariableLengthFieldWith<Context>>::handle(bytes, ctx);
         Ok(field)
     }
 
@@ -279,14 +269,14 @@ where
     where
         Decode: DecodeByteLength<N> + TryDecodeVariableLengthFieldWith<Context>,
     {
-        let mut buf = [0; N];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
-        let length: usize = <Decode as DecodeByteLength<N>>::handle(buf);
+        let length = self
+            .read_fixed_length()
+            .map_err(CodecError::Io)
+            .map(<Decode as DecodeByteLength<N>>::handle)?;
 
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        let bytes = self.read_variable_length(length).map_err(CodecError::Io)?;
 
-        <Decode as TryDecodeVariableLengthFieldWith<Context>>::handle(buf, ctx)
+        <Decode as TryDecodeVariableLengthFieldWith<Context>>::handle(bytes, ctx)
             .map_err(CodecError::UserDefined)
     }
 
@@ -297,11 +287,7 @@ where
     where
         Decode: DecodeVariableLengthField,
     {
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf)?;
-
-        let field = Decode::handle(buf);
-        Ok(field)
+        self.read_variable_length(length).map(Decode::handle)
     }
 
     fn try_decode_variable_length_field_with_length<Decode>(
@@ -311,10 +297,8 @@ where
     where
         Decode: TryDecodeVariableLengthField,
     {
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
-
-        Decode::handle(buf).map_err(CodecError::UserDefined)
+        let bytes = self.read_variable_length(length).map_err(CodecError::Io)?;
+        Decode::handle(bytes).map_err(CodecError::UserDefined)
     }
 
     fn decode_variable_length_field_with_length_and<Decode, Context>(
@@ -325,10 +309,8 @@ where
     where
         Decode: DecodeVariableLengthFieldWith<Context>,
     {
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf)?;
-
-        let field = Decode::handle(buf, ctx);
+        let bytes = self.read_variable_length(length)?;
+        let field = Decode::handle(bytes, ctx);
         Ok(field)
     }
 
@@ -340,10 +322,20 @@ where
     where
         Decode: TryDecodeVariableLengthFieldWith<Context>,
     {
-        let mut buf = vec![0; length];
-        self.read_exact(&mut buf).map_err(CodecError::Io)?;
+        let bytes = self.read_variable_length(length).map_err(CodecError::Io)?;
+        Decode::handle(bytes, ctx).map_err(CodecError::UserDefined)
+    }
 
-        Decode::handle(buf, ctx).map_err(CodecError::UserDefined)
+    fn read_fixed_length<const N: usize>(&'r mut self) -> Result<[u8; N], std::io::Error> {
+        let mut buf = [0; N];
+        self.read_exact(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn read_variable_length(&'r mut self, length: usize) -> Result<Vec<u8>, std::io::Error> {
+        let mut buf = vec![0; length];
+        self.read_exact(&mut buf)?;
+        Ok(buf)
     }
 }
 
@@ -362,9 +354,7 @@ mod tests {
             type Error = std::io::Error;
 
             fn handle(bytes: &'r mut R) -> Result<Self, Self::Error> {
-                let mut buf = [0; 2];
-                bytes.read_exact(&mut buf)?;
-                Ok(u16::from_be_bytes(buf))
+                bytes.read_fixed_length().map(u16::from_be_bytes)
             }
         }
 
@@ -382,9 +372,7 @@ mod tests {
             type Error = std::io::Error;
 
             fn handle(bytes: &'r mut R, _: ()) -> Result<Self, Self::Error> {
-                let mut buf = [0; 2];
-                bytes.read_exact(&mut buf)?;
-                Ok(u16::from_be_bytes(buf))
+                bytes.read_fixed_length().map(u16::from_be_bytes)
             }
         }
 
