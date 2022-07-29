@@ -18,14 +18,14 @@ Add this to your Cargo.toml:
 
 ### core2
 
-```
+```toml
 [dependencies]
 binary_codec = { version = "*", default_features = false, features = ["core2"] }
 ```
 
 ### std
 
-```
+```toml
 [dependencies]
 binary_codec = "*"
 ```
