@@ -1,8 +1,27 @@
+#![no_std]
+
 extern crate binary_codec;
+
+#[cfg(feature = "core2")]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
 
 use binary_codec::*;
 
-#[derive(Debug, PartialEq)]
+#[cfg(feature = "core2")]
+use core2::io::{Cursor, Error, Read, Write};
+
+#[cfg(feature = "core2")]
+use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use std::{
+    io::{Cursor, Error, Read, Write},
+    vec::Vec,
+};
+
 struct BitmapFileHeader {
     signature: [u8; 2],
     file_size: u32,
@@ -11,15 +30,14 @@ struct BitmapFileHeader {
     offset: u32,
 }
 
-#[derive(Debug)]
 enum BitmapFileHeaderError {
     InvalidSignature([u8; 2]),
-    Io(std::io::Error),
+    Io(Error),
 }
 
-impl<R> TryDecode<'_, R> for BitmapFileHeader
+impl<R> TryDecode<R> for BitmapFileHeader
 where
-    R: std::io::Read,
+    R: Read,
 {
     type Error = BitmapFileHeaderError;
 
@@ -52,11 +70,11 @@ where
     }
 }
 
-impl<W> TryEncode<'_, '_, W> for BitmapFileHeader
+impl<W> TryEncode<W> for BitmapFileHeader
 where
-    W: std::io::Write,
+    W: Write,
 {
-    type Error = std::io::Error;
+    type Error = Error;
 
     fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
         writer.write_all(&self.signature)?;
@@ -68,7 +86,6 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
 struct BitmapInfoHeader {
     size: u32,
     width: i32,
@@ -83,15 +100,14 @@ struct BitmapInfoHeader {
     colors_important: u32,
 }
 
-#[derive(Debug)]
 enum BitmapInfoHeaderError {
     UnsupportedInfoHeaderSize(u32),
-    Io(std::io::Error),
+    Io(Error),
 }
 
-impl<R> TryDecode<'_, R> for BitmapInfoHeader
+impl<R> TryDecode<R> for BitmapInfoHeader
 where
-    R: std::io::Read,
+    R: Read,
 {
     type Error = BitmapInfoHeaderError;
 
@@ -149,11 +165,11 @@ where
     }
 }
 
-impl<W> TryEncode<'_, '_, W> for BitmapInfoHeader
+impl<W> TryEncode<W> for BitmapInfoHeader
 where
-    W: std::io::Write,
+    W: Write,
 {
-    type Error = std::io::Error;
+    type Error = Error;
 
     fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
         writer.write_all(&self.size.to_le_bytes())?;
@@ -178,18 +194,26 @@ struct RgbTriple {
     b: u8,
 }
 
-impl DecodeFixedLengthField<3> for RgbTriple {
-    fn handle(bytes: [u8; 3]) -> Self {
-        let [b, g, r] = bytes;
-        Self { r, g, b }
+impl<R> TryDecode<R> for RgbTriple
+where
+    R: Read,
+{
+    type Error = Error;
+
+    fn handle(reader: &mut R) -> Result<Self, Self::Error> {
+        let [b, g, r] = reader.read_fixed_length()?;
+        Ok(Self { r, g, b })
     }
 }
 
-impl EncodeField<'_> for RgbTriple {
-    type Bytes = [u8; 3];
+impl<W> TryEncode<W> for RgbTriple
+where
+    W: Write,
+{
+    type Error = Error;
 
-    fn handle(&self) -> Self::Bytes {
-        [self.b, self.g, self.r]
+    fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
+        writer.write_all(&[self.b, self.g, self.r])
     }
 }
 
@@ -201,18 +225,26 @@ struct RgbQuad {
     reserved: u8,
 }
 
-impl DecodeFixedLengthField<4> for RgbQuad {
-    fn handle(bytes: [u8; 4]) -> Self {
-        let [b, g, r, reserved] = bytes;
-        Self { r, g, b, reserved }
+impl<R> TryDecode<R> for RgbQuad
+where
+    R: Read,
+{
+    type Error = Error;
+
+    fn handle(reader: &mut R) -> Result<Self, Self::Error> {
+        let [b, g, r, reserved] = reader.read_fixed_length()?;
+        Ok(Self { r, g, b, reserved })
     }
 }
 
-impl EncodeField<'_> for RgbQuad {
-    type Bytes = [u8; 4];
+impl<W> TryEncode<W> for RgbQuad
+where
+    W: Write,
+{
+    type Error = Error;
 
-    fn handle(&self) -> Self::Bytes {
-        [self.b, self.g, self.r, self.reserved]
+    fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
+        writer.write_all(&[self.b, self.g, self.r, self.reserved])
     }
 }
 
@@ -226,7 +258,7 @@ enum ColorTable {
 enum ColorTableError {
     UnsupportedColorPalette(u16),
     InvalidDataLength(u32),
-    Io(std::io::Error),
+    Io(Error),
 }
 
 struct ColorTableContext {
@@ -243,9 +275,9 @@ impl ColorTableContext {
     }
 }
 
-impl<R> TryDecodeWith<'_, R, ColorTableContext> for ColorTable
+impl<R> TryDecodeWith<R, ColorTableContext> for ColorTable
 where
-    R: std::io::Read,
+    R: Read,
 {
     type Error = ColorTableError;
 
@@ -258,11 +290,7 @@ where
 
                 let mut list = Vec::new();
                 for _ in 0..ctx.length / 3 {
-                    list.push(
-                        reader
-                            .decode_fixed_length_field()
-                            .map_err(ColorTableError::Io)?,
-                    )
+                    list.push(reader.try_decode().map_err(ColorTableError::Io)?)
                 }
                 Ok(ColorTable::RgbTriple(list))
             }
@@ -273,11 +301,7 @@ where
 
                 let mut list = Vec::new();
                 for _ in 0..ctx.length / 4 {
-                    list.push(
-                        reader
-                            .decode_fixed_length_field()
-                            .map_err(ColorTableError::Io)?,
-                    )
+                    list.push(reader.try_decode().map_err(ColorTableError::Io)?)
                 }
                 Ok(ColorTable::RgbQuad(list))
             }
@@ -286,22 +310,22 @@ where
     }
 }
 
-impl<W> TryEncode<'_, '_, W> for ColorTable
+impl<W> TryEncode<W> for ColorTable
 where
-    W: std::io::Write,
+    W: Write,
 {
-    type Error = std::io::Error;
+    type Error = Error;
 
     fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
         match self {
             ColorTable::RgbTriple(list) => {
                 for rgb_triple in list.iter() {
-                    writer.encode_field(rgb_triple)?;
+                    writer.try_encode(rgb_triple)?;
                 }
             }
             ColorTable::RgbQuad(list) => {
                 for rgb_quad in list.iter() {
-                    writer.encode_field(rgb_quad)?;
+                    writer.try_encode(rgb_quad)?;
                 }
             }
         }
@@ -309,7 +333,6 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
 struct ToyBitmap {
     file_header: BitmapFileHeader,
     info_header: BitmapInfoHeader,
@@ -322,12 +345,12 @@ enum BitmapError {
     UnsupportedInfoHeaderSize(u32),
     UnsupportedColorPalette(u16),
     InvalidColorTableDataLength(u32),
-    Io(std::io::Error),
+    Io(Error),
 }
 
-impl<R> TryDecode<'_, R> for ToyBitmap
+impl<R> TryDecode<R> for ToyBitmap
 where
-    R: std::io::Read,
+    R: Read,
 {
     type Error = BitmapError;
 
@@ -364,11 +387,11 @@ where
     }
 }
 
-impl<W> TryEncode<'_, '_, W> for ToyBitmap
+impl<W> TryEncode<W> for ToyBitmap
 where
-    W: std::io::Write,
+    W: Write,
 {
-    type Error = std::io::Error;
+    type Error = Error;
 
     fn handle(&self, writer: &mut W) -> Result<(), Self::Error> {
         writer.try_encode(&self.file_header)?;
@@ -383,7 +406,7 @@ fn example() {
     let bytes = include_bytes!("./example.bmp");
 
     let bitmap: ToyBitmap = {
-        let mut rdr = std::io::Cursor::new(bytes);
+        let mut rdr = Cursor::new(bytes);
         rdr.try_decode().unwrap()
     };
 

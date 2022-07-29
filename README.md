@@ -8,6 +8,6 @@ _binary-codec_ is a type-safe and efficient binary encoding and decoding utiliti
 
 ## supports
 
+- [x] core2
 - [x] std::io
 - [ ] tokio
-- [ ] async-std

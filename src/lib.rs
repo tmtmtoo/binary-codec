@@ -1,7 +1,12 @@
+#![no_std]
+
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 mod decode;
 mod encode;
-mod error;
 
 pub use decode::*;
 pub use encode::*;
-pub use error::*;
