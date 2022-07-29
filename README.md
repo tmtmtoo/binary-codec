@@ -8,6 +8,24 @@ _binary-codec_ is a type-safe and efficient binary encoding and decoding utiliti
 
 ## supports
 
-- [x] std::io
+- [x] core2 (no_std)
+- [x] std
 - [ ] tokio
-- [ ] async-std
+
+## usage
+
+Add this to your Cargo.toml:
+
+### core2
+
+```
+[dependencies]
+binary_codec = { version = "*", default_features = false, features = ["core2"] }
+```
+
+### std
+
+```
+[dependencies]
+binary_codec = "*"
+```
